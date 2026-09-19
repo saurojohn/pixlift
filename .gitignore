@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# pixlift runtime
+tmp/
+models/
+logs/
+*.pid
+.start.lock
+.pixlift.pgid
+pixlift.pid
+
+# Test session cache
+/tmp/pixlift_test_models
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+*.swp

@@ -1,0 +1,509 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2028;
+  --border: #2a3441;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --danger: #f85149;
+  --success: #3fb950;
+  --shadow: 0 4px 14px rgba(0,0,0,0.3);
+  --radius: 8px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff;
+    --surface: #f6f8fa;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --text-muted: #656d76;
+    --shadow: 0 4px 14px rgba(0,0,0,0.08);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+header h1 {
+  margin: 0 0 4px;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+.tagline {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* === 预设按钮 === */
+#presets {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.preset {
+  flex: 1;
+  min-width: 120px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.preset:hover {
+  border-color: var(--accent);
+  background: rgba(88,166,255,0.08);
+}
+.preset.active {
+  border-color: var(--accent);
+  background: rgba(88,166,255,0.15);
+  color: var(--accent);
+}
+
+/* === 拖拽区 === */
+#drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 48px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+#drop-zone:hover, #drop-zone.dragover {
+  border-color: var(--accent);
+  background: rgba(88,166,255,0.06);
+}
+.drop-prompt {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.drop-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* === 队列 === */
+#queue {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+#queue h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--accent);
+  color: white;
+  border-radius: 10px;
+  font-size: 12px;
+  margin-left: 4px;
+}
+#queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+#queue-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  border-radius: 4px;
+  font-size: 13px;
+}
+#queue-list li .qi-status {
+  color: var(--text-muted);
+}
+#queue-list li.done .qi-status { color: var(--success); }
+#queue-list li.failed .qi-status { color: var(--danger); }
+#queue-list li.running .qi-status { color: var(--accent); }
+
+/* === 配置面板 === */
+#config, #result {
+  margin-top: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.row label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+select {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.muted { color: var(--text-muted); font-weight: normal; }
+
+/* 模式切换 */
+.mode-toggle {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mode-btn.active {
+  background: var(--accent);
+  color: white;
+}
+
+/* 文件信息 */
+.file-info {
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* 按钮 */
+button.primary, a.primary {
+  display: inline-block;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+button.primary:hover:not(:disabled), a.primary:hover {
+  background: var(--accent-hover);
+}
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.ghost {
+  display: inline-block;
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  margin-left: 8px;
+}
+button.ghost:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* 进度 */
+#progress {
+  margin-top: 16px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.bar {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+#bar-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.2s;
+}
+#progress-text {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--text);
+}
+#progress-detail {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 错误 */
+#error {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: rgba(248,81,73,0.1);
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+/* === 对比滑块 === */
+
+/* 工具栏 */
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  margin-bottom: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.compare-toolbar button {
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.compare-toolbar button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.compare-toolbar button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+.compare-toolbar .sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 4px;
+}
+.compare-toolbar .zoom-label {
+  min-width: 48px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.compare-toolbar .hint {
+  flex: 1;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+/* viewport 支持缩放与平移 */
+.compare-viewport {
+  position: relative;
+  width: 100%;
+  height: 60vh;
+  min-height: 320px;
+  max-height: 720px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: #0d1117;
+  background-image:
+    linear-gradient(45deg, #161b22 25%, transparent 25%),
+    linear-gradient(-45deg, #161b22 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #161b22 75%),
+    linear-gradient(-45deg, transparent 75%, #161b22 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  cursor: grab;
+}
+.compare-viewport.dragging {
+  cursor: grabbing;
+}
+.compare-viewport.alt-mode {
+  cursor: zoom-in;
+}
+
+/* 内部 compare 容器，跟随缩放与平移 */
+.compare {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  user-select: none;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.layer {
+  position: relative;
+  display: block;
+  width: 100%;
+  pointer-events: none;
+}
+.layer img {
+  display: block;
+  width: 100%;
+  height: auto;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.layer-after {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  width: 50%;
+}
+.divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  left: 50%;
+  transform: translateX(-1.5px);
+  cursor: ew-resize;
+  z-index: 2;
+  outline: none;
+}
+.divider:focus-visible {
+  background: #ff9800;
+  box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.4);
+}
+.divider .handle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+/* 全屏（只看一张）模式 */
+.compare.full-before .layer-after { width: 0% !important; }
+.compare.full-after .layer-before { width: 0% !important; }
+.compare.full-before .divider,
+.compare.full-after .divider { display: none; }
+
+/* 翻转（左结果右原图） */
+.compare.flipped .layer-before { order: 2; }
+.compare.flipped .layer-after { order: 1; }
+
+/* 放大镜 */
+.loupe {
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: var(--bg);
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  box-shadow: var(--shadow);
+  display: none;
+}
+.loupe.visible { display: block; }
+.loupe::after {
+  content: "原图 / 结果";
+  position: absolute;
+  bottom: -22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.result-meta {
+  margin: 0 0 16px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.result-actions {
+  display: flex;
+  gap: 8px;
+}
+.result-actions .primary {
+  flex: 1;
+  text-align: center;
+}
+.result-actions .ghost {
+  flex: 0 0 auto;
+}
+footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+@media (max-width: 600px) {
+  main { padding: 20px 16px 32px; }
+  .row { grid-template-columns: 70px 1fr; }
+  .preset { font-size: 13px; padding: 8px; }
+}
