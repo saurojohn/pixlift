@@ -220,7 +220,8 @@ submitBtn.addEventListener("click", async () => {
   barFill.style.width = "0%";
   barFill.classList.remove("indeterminate");
   const isSingle = currentFiles.length === 1;
-  const willBeSync = isSingle && currentFiles[0].size < SYNC_THRESHOLD;
+  const isSyncSingle = isSingle && currentFiles[0].size < SYNC_THRESHOLD;
+  const willBeSync = isSyncSingle;
   // 同步路径（小图）没有 job_id 可轮询，用 indeterminate 动画表示在处理
   if (willBeSync) {
     barFill.classList.add("indeterminate");
