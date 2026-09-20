@@ -109,6 +109,11 @@ def validate_image_bytes(
         raise HTTPException(
             status_code=415, detail=f"Corrupt or unreadable image: {e}"
         ) from e
+    except Image.DecompressionBombError as e:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image too large to decode safely: {e}",
+        ) from e
 
     try:
         with Image.open(io.BytesIO(data)) as im:
