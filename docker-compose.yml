@@ -1,0 +1,52 @@
+# PixLift docker-compose
+# 用法：
+#   1. 下载模型到 ./models/ （见 README）
+#   2. docker compose up -d
+#   3. 浏览器打开 http://localhost:8000
+
+services:
+  pixlift:
+    build: .
+    image: pixlift:latest
+    container_name: pixlift
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 监听所有接口（容器内），主机端口通过 ports 映射
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      LOG_LEVEL: "info"
+      # 限制上传 50 MB、长边 8192、超时 300s
+      MAX_UPLOAD_MB: "50"
+      MAX_LONG_EDGE: "8192"
+      JOB_TIMEOUT_S: "300"
+      # 并发推理上限（CPU 模式默认 1；GPU 可调高）
+      MAX_CONCURRENT_UPSCALES: "1"
+      # 保留 tmp 24h（默认 10 分钟）
+      KEEP_TMP_HOURS: "24"
+    volumes:
+      # 持久化模型 + 输出（重启不丢）
+      - ./models:/app/models:ro
+      - pixlift-tmp:/app/tmp
+      - pixlift-logs:/app/logs
+    # 健康检查（Docker 自带，与 Dockerfile 一致）
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    # 限制资源（CPU 模式时建议；GPU 模式可去掉）
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        reservations:
+          cpus: "1.0"
+          memory: 2G
+
+volumes:
+  pixlift-tmp:
+  pixlift-logs:

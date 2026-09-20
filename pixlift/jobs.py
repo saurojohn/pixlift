@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import secrets
 import shutil
 import time
 from dataclasses import asdict, dataclass, field
@@ -13,13 +15,14 @@ from typing import Literal
 
 # Job 状态机
 VALID_TRANSITIONS: dict[str, frozenset[str]] = {
-    "queued": frozenset({"running", "failed"}),
-    "running": frozenset({"done", "failed"}),
+    "queued": frozenset({"running", "failed", "cancelled"}),
+    "running": frozenset({"done", "failed", "cancelled"}),
     "done": frozenset(),  # 终态
     "failed": frozenset(),  # 终态
+    "cancelled": frozenset(),  # 终态
 }
 
-JobStatus = Literal["queued", "running", "done", "failed"]
+JobStatus = Literal["queued", "running", "done", "failed", "cancelled"]
 
 
 class InvalidTransition(ValueError):
@@ -54,8 +57,6 @@ class Job:
 
 def _gen_job_id() -> str:
     """时间戳 + 8 hex 随机（4 byte = 2^32 种），极端并发也不撞。"""
-    import secrets
-
     return f"j-{int(time.time())}-{secrets.token_hex(4)}"
 
 
@@ -74,6 +75,8 @@ class JobManager:
         self.tmp_root.mkdir(parents=True, exist_ok=True)
         self.max_count = max_count
         self.max_age_s = max_age_s
+        # in-flight asyncio.Task 跟踪（用于 cancel）
+        self._tasks: dict[str, asyncio.Task] = {}
 
     async def create(
         self,
@@ -141,6 +144,33 @@ class JobManager:
                     raise AttributeError(f"Job has no field: {k}")
                 setattr(job, k, v)
             return job
+
+    def register_task(self, job_id: str, task: asyncio.Task) -> None:
+        """注册 in-flight 任务，便于 cancel。"""
+        self._tasks[job_id] = task
+
+    def unregister_task(self, job_id: str) -> None:
+        self._tasks.pop(job_id, None)
+
+    async def cancel(self, job_id: str) -> bool:
+        """取消 in-flight 任务 + 标记 cancelled。返回是否成功。"""
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return False
+            if job.status in ("done", "failed", "cancelled"):
+                return True  # 已经是终态，幂等成功
+            # 1. 取消 asyncio.Task（cancel 在 worker thread 上调无效，但 Engine
+            #    的 worker 是 asyncio.to_thread 包装的，cancel 触发 CancelledError
+            #    会让 to_thread 抛 — 不依赖 worker 立即停）
+            task = self._tasks.get(job_id)
+            if task is not None and not task.done():
+                task.cancel()
+            # 2. 标记 cancelled（cancelled 是终态）
+            job.status = "cancelled"
+            job.finished_at = time.time()
+            job.error = "cancelled by user"
+            return True
 
     async def list_recent(self, n: int = 20) -> list[dict]:
         async with self._lock:

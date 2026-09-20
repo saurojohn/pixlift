@@ -1,0 +1,24 @@
+# 不要把本地 venv / 模型 / 测试打进镜像
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 不打模型（运行时由 volume 挂载）
+models/
+
+# 不打运行产物
+tmp/
+logs/
+
+# 不打测试
+tests/
+
+# 不打 .git
+.git/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store

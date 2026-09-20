@@ -18,6 +18,7 @@ class Settings:
     keep_tmp_hours: int = 0  # 0 = 不保留历史；>0 启动时清超出时长目录
     max_jobs: int = 50
     max_batches: int = 30  # 内存中保留 batch 元数据数量上限
+    max_concurrent_upscales: int = 1  # 同时推理上限（=1 串行；MPS 内存受限时可保持 1）
     tmp_root: Path = field(default_factory=lambda: Path("tmp"))
     model_dir: Path = field(default_factory=lambda: Path("models"))
     extra_args: list[str] = field(default_factory=list)
@@ -73,6 +74,7 @@ def load_settings() -> Settings:
         keep_tmp_hours=_get_int("KEEP_TMP_HOURS", 0, 0, 720),
         max_jobs=_get_int("MAX_JOBS", 50, 1, 10000),
         max_batches=_get_int("MAX_BATCHES", 30, 1, 10000),
+        max_concurrent_upscales=_get_int("MAX_CONCURRENT_UPSCALES", 1, 1, 32),
         tmp_root=Path(os.environ.get("TMP_DIR", "tmp").strip()),
         model_dir=Path(os.environ.get("MODEL_DIR", "models").strip()),
         extra_args=_list_env("REAL_ESRGAN_EXTRA_ARGS", []),

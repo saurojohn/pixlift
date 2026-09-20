@@ -15,7 +15,7 @@ from PIL import Image, UnidentifiedImageError
 # 必须看 8-12 字节是否是 "WEBP"。
 MAGIC_BYTES = {
     "png": (b"\x89PNG\r\n\x1a\n",),
-    # JPEG: SOI marker 总是 \xff\xd8\xff，后面任意字节是 APP/JFIF/EXIF
+    # JPEG: SOI marker 总是 \xff\xd8\xff（不同 APP marker 不影响 magic）
     "jpg": (b"\xff\xd8\xff",),
     "webp": None,  # 用 _is_webp() 特殊处理（要查 8-12 字节）
     "gif": (b"GIF87a", b"GIF89a"),

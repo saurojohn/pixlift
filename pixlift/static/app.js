@@ -464,7 +464,13 @@ async function downloadBatchZip(batch) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    // 浏览器接住下载是异步的；用 requestIdleCallback 兜底 revoke，
+    // 避免 5s 兜底期间用户立刻点 "处理下一张" 导致重复 revoke 报错
+    if (window.requestIdleCallback) {
+      requestIdleCallback(() => URL.revokeObjectURL(url), { timeout: 1500 });
+    } else {
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
 
     progressText.textContent = `完成 · ${batch.done}/${batch.total} 张已处理`;
     progressDetail.textContent = "ZIP 已下载";
@@ -710,7 +716,8 @@ function onDrag(e) {
     const pct = Math.max(0, Math.min(100, (x / rect.width) * 100));
     setSplitPct(pct);
   } else if (dragMode === "pan") {
-    e.preventDefault();
+    // 仅当确实在拖动时 preventDefault；避免阻止页面缩放手势
+    if (e.cancelable) e.preventDefault();
     const dx = e.clientX - lastPanX;
     const dy = e.clientY - lastPanY;
     lastPanX = e.clientX;

@@ -98,6 +98,7 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
             timeout_s=settings.job_timeout_s,
             extra_args=settings.extra_args,
         )
+        engine.set_max_concurrent(settings.max_concurrent_upscales)
     except EngineError as e:
         log.warning("engine init failed: %s", e)
         engine = None
@@ -113,9 +114,12 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
     # 持有异步任务引用，防止 GC 回收导致处理中断
     _active_tasks: set[asyncio.Task] = set()
 
-    def _track_task(coro) -> asyncio.Task:
+    def _track_task(coro, job_id: str | None = None) -> asyncio.Task:
         task = asyncio.create_task(coro)
         _active_tasks.add(task)
+        if job_id is not None:
+            job_mgr.register_task(job_id, task)
+            task.add_done_callback(lambda t: job_mgr.unregister_task(job_id))
         task.add_done_callback(_active_tasks.discard)
         return task
 
@@ -342,7 +346,7 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
                 500, f"Sync processing failed: {job.error or 'unknown'}"
             )
 
-        _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality))
+        _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality), job_id=job.id)
         out_w, out_h = meta.width * actual_scale, meta.height * actual_scale
         return JSONResponse(
             status_code=202,
@@ -424,7 +428,7 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
             output_path = Path(job.work_dir) / f"output.{out_fmt}"
             await asyncio.to_thread(input_path.write_bytes, data)
             # 串行：每个任务等上一个完成
-            _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality))
+            _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality), job_id=job.id)
 
         return JSONResponse(
             status_code=202,
@@ -441,6 +445,14 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         if job is None:
             raise HTTPException(404, f"Job not found: {job_id}")
         return job.to_dict()
+
+    @app.delete("/api/jobs/{job_id}")
+    async def job_cancel(job_id: str):
+        """取消 in-flight 任务。终态 job 幂等返 200。"""
+        ok = await job_mgr.cancel(job_id)
+        if not ok:
+            raise HTTPException(404, f"Job not found: {job_id}")
+        return {"job_id": job_id, "status": "cancelled"}
 
     @app.get("/api/jobs/{job_id}/download")
     async def job_download(job_id: str):

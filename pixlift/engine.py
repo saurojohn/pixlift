@@ -45,8 +45,6 @@ _TILE_DOWNGRADE_PIXELS = 4000
 _STDERR_RING_MAXLEN = 50
 
 ProgressCb = Callable[[int], Awaitable[None]] | Callable[[int], None]
-# 阶段化回调：percent + phase（load_model/preprocess/infer/save）
-ProgressCbPhased = Callable[[int, str], Awaitable[None]] | Callable[[int, str], None]
 
 
 class EngineError(RuntimeError):
@@ -59,7 +57,8 @@ class EngineResult:
     output_path: Path
     output_dim: tuple[int, int]
     output_bytes: int
-    stderr_tail: str = ""
+    stderr_tail: str = ""  # deprecated, use log_tail; kept for API compat
+    log_tail: str = ""
     duration_s: float = 0.0
 
 
@@ -188,11 +187,17 @@ class Engine:
     model_dir: Path
     timeout_s: int = 120
     extra_args: list[str] = field(default_factory=list)
-    threads: str = "2:2:2"  # 保留字段
     _upsampler_cache: _UpsamplerCache = field(default_factory=_UpsamplerCache, init=False, repr=False)
     _torch_dtype: object = field(default=None, init=False, repr=False)
     _torch_device: object = field(default=None, init=False, repr=False)
     _initialized: bool = field(default=False, init=False, repr=False)
+    _semaphore: asyncio.Semaphore | None = field(default=None, init=False, repr=False)
+
+    def set_max_concurrent(self, n: int) -> None:
+        """限制同时推理数（防 N 张大图同时打爆 MPS 内存）。"""
+        if n < 1:
+            raise ValueError(f"max_concurrent must be >= 1, got {n}")
+        self._semaphore = asyncio.Semaphore(n)
 
     @classmethod
     def from_env(
@@ -368,10 +373,19 @@ class Engine:
                 _img_out.save(output_path, save_format, **save_kwargs)
 
         try:
-            await asyncio.wait_for(
-                asyncio.to_thread(_do_upscale),
-                timeout=self.timeout_s,
-            )
+            # 用 semaphore 限制并发推理数（防 N 张大图同时打爆 MPS 内存）
+            sem = self._semaphore
+            if sem is not None:
+                async with sem:
+                    await asyncio.wait_for(
+                        asyncio.to_thread(_do_upscale),
+                        timeout=self.timeout_s,
+                    )
+            else:
+                await asyncio.wait_for(
+                    asyncio.to_thread(_do_upscale),
+                    timeout=self.timeout_s,
+                )
         except asyncio.TimeoutError as e:
             raise EngineError(
                 f"Engine timeout after {self.timeout_s}s"
@@ -409,17 +423,9 @@ class Engine:
             output_dim=(w, h),
             output_bytes=size,
             stderr_tail="\n".join(stderr_lines),
+            log_tail="\n".join(stderr_lines),
             duration_s=duration,
         )
-
-    @staticmethod
-    async def _reencode_quality(
-        output_path: Path,
-        out_format: Literal["png", "jpg", "webp"],
-        quality: int,
-    ) -> None:
-        """保留 API 兼容；upscale() 已内部处理 quality。"""
-        pass
 
     async def health_check(self) -> dict:
         """探测后端可用性、模型、Vulkan 状态（兼容字段）。"""
