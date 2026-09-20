@@ -218,13 +218,20 @@ submitBtn.addEventListener("click", async () => {
   cancelBtn.hidden = false;
   progressSection.hidden = false;
   barFill.style.width = "0%";
-  progressText.textContent = "上传中…";
+  barFill.classList.remove("indeterminate");
+  const isSingle = currentFiles.length === 1;
+  const willBeSync = isSingle && currentFiles[0].size < SYNC_THRESHOLD;
+  // 同步路径（小图）没有 job_id 可轮询，用 indeterminate 动画表示在处理
+  if (willBeSync) {
+    barFill.classList.add("indeterminate");
+    progressText.textContent = "处理中…";
+  } else {
+    progressText.textContent = "上传中…";
+  }
   progressDetail.textContent = "";
 
   abortController = new AbortController();
   const formData = new FormData();
-  const isSingle = currentFiles.length === 1;
-  const isSyncSingle = isSingle && currentFiles[0].size < SYNC_THRESHOLD;
   // 单图走 /api/upscale（字段名 "image"），多图走 /api/upscale/batch（字段名 "images"）
   const imageField = isSingle ? "image" : "images";
   currentFiles.forEach(f => formData.append(imageField, f));
@@ -259,6 +266,9 @@ submitBtn.addEventListener("click", async () => {
       const jobId = resp.headers.get("X-Job-Id") || "";
       const w = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
       const h = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
+      barFill.classList.remove("indeterminate");
+      barFill.style.width = "100%";
+      progressText.textContent = "完成 · 100%";
       showResult(blob, w, h, jobId);
       return;
     }
