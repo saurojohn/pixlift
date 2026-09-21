@@ -1,5 +1,5 @@
 """生成测试用 fixture 图片（程序化生成，无需 git LFS）。"""
-import sys
+
 from pathlib import Path
 
 from PIL import Image, ImageDraw

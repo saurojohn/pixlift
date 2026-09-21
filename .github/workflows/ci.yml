@@ -54,6 +54,6 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: ruff check
-        run: ruff check pixlift/
+        run: ruff check pixlift/ scripts/
       - name: ruff format --check
-        run: ruff format --check pixlift/
+        run: ruff format --check pixlift/ scripts/
