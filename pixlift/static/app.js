@@ -26,6 +26,9 @@ const errorSection = $("error");
 const resultSection = $("result");
 const imgBefore = $("img-before");
 const imgAfter = $("img-after");
+// side-by-side 模式的独立 img 元素（不参与 slider 拖动）
+const imgBeforeSbs = $("img-before-sbs");
+const imgAfterSbs = $("img-after-sbs");
 const layerAfter = document.querySelector(".layer-after");
 const divider = $("divider");
 const downloadLink = $("download");
@@ -198,7 +201,9 @@ function handleFiles(files) {
     // 单张：显示缩略图
     setBlobUrl("before", URL.createObjectURL(images[0]));
     imgBefore.src = blobUrls.before;
+    if (imgBeforeSbs) imgBeforeSbs.src = blobUrls.before;
     imgAfter.src = "";
+    if (imgAfterSbs) imgAfterSbs.src = "";
     setSplitPct(50);
   }
 }
@@ -491,8 +496,9 @@ function showResult(blob, w, h, jobId, suggestedName) {
   setBlobUrl("after", URL.createObjectURL(blob));
   const url = blobUrls.after;
   imgAfter.src = url;
+  if (imgAfterSbs) imgAfterSbs.src = url;
   const onAfterLoad = () => {
-    initCompareViewport();
+    if (compareState.mode === "slider") initCompareViewport();
     imgAfter.removeEventListener("load", onAfterLoad);
   };
   if (imgAfter.complete && imgAfter.naturalWidth) onAfterLoad();
@@ -513,6 +519,7 @@ function showResult(blob, w, h, jobId, suggestedName) {
 
 const compareViewport = $("compare-viewport");
 const compareEl = $("compare");
+const sideBySideEl = $("side-by-side");
 const layerBefore = document.querySelector(".layer-before");
 const loupe = $("loupe");
 const zoomLabel = $("zoom-label");
@@ -522,7 +529,7 @@ const flipBtns = document.querySelectorAll(".btn-flip");
 
 let compareState = {
   splitPct: 50,          // 0-100
-  mode: "split",         // "split" | "before" | "after"
+  mode: "split",         // "split" | "slider" | "before" | "after"
   flipped: false,
   zoom: 1,
   panX: 0,
@@ -540,10 +547,30 @@ function setSplitPct(pct) {
 
 function setCompareMode(mode) {
   compareState.mode = mode;
-  compareEl.classList.toggle("full-before", mode === "before");
-  compareEl.classList.toggle("full-after", mode === "after");
+  // 高亮 toolbar
   quickBtns.forEach(b => b.classList.toggle("active", b.dataset.quick === mode));
-  if (mode !== "split") {
+  // 切换显示哪个 viewport
+  if (mode === "split") {
+    sideBySideEl.hidden = false;
+    compareEl.hidden = true;
+  } else if (mode === "slider") {
+    sideBySideEl.hidden = true;
+    compareEl.hidden = false;
+    initCompareViewport();
+    loupe.classList.remove("visible");
+    loupe.hidden = true;
+  } else if (mode === "before") {
+    sideBySideEl.hidden = true;
+    compareEl.hidden = false;
+    compareEl.classList.add("full-before");
+    compareEl.classList.remove("full-after");
+    loupe.classList.remove("visible");
+    loupe.hidden = true;
+  } else if (mode === "after") {
+    sideBySideEl.hidden = true;
+    compareEl.hidden = false;
+    compareEl.classList.add("full-after");
+    compareEl.classList.remove("full-before");
     loupe.classList.remove("visible");
     loupe.hidden = true;
   }
@@ -648,6 +675,8 @@ zoomBtns.forEach(b => b.addEventListener("click", () => {
 flipBtns.forEach(b => b.addEventListener("click", () => {
   compareState.flipped = b.dataset.flip === "1";
   compareEl.classList.toggle("flipped", compareState.flipped);
+  // side-by-side 模式下：直接 CSS flex order 翻转两个 .side
+  sideBySideEl.classList.toggle("flipped", compareState.flipped);
   flipBtns.forEach(x => x.classList.toggle("active", x.dataset.flip === b.dataset.flip));
 }));
 
@@ -793,12 +822,14 @@ compareViewport.addEventListener("mousemove", (e) => {
 });
 
 // === 双击切换对比方向 ===
-compareEl.addEventListener("dblclick", (e) => {
+function toggleFlip() {
   compareState.flipped = !compareState.flipped;
   compareEl.classList.toggle("flipped", compareState.flipped);
+  sideBySideEl.classList.toggle("flipped", compareState.flipped);
   flipBtns.forEach(b => b.classList.toggle("active", (b.dataset.flip === "1") === compareState.flipped));
-  e.preventDefault();
-});
+}
+compareEl.addEventListener("dblclick", (e) => { toggleFlip(); e.preventDefault(); });
+sideBySideEl.addEventListener("dblclick", (e) => { toggleFlip(); e.preventDefault(); });
 
 // === 重置 ===
 
