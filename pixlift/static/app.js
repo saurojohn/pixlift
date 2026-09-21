@@ -339,43 +339,46 @@ function formatApiError(err, status) {
 
 // === 单张轮询 ===
 
+async function _pollOnce() {
+  if (!activeJobId) return;
+  try {
+    const r = await fetch(`/api/jobs/${activeJobId}`);
+    if (!r.ok) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      activeJobId = null;
+      const msg = r.status === 404 ? "任务不存在（可能已被清理）" : `轮询失败：HTTP ${r.status}`;
+      showError(msg);
+      resetProgress();
+      return;
+    }
+    const j = await r.json();
+    barFill.style.width = j.progress + "%";
+    const phaseLabel = phaseToLabel(j.phase);
+    progressText.textContent = phaseLabel ? `${phaseLabel} · ${j.progress}%` : `${j.status} · ${j.progress}%`;
+    progressDetail.textContent = `任务 ${activeJobId}`;
+
+    if (j.status === "done") {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      downloadResult();
+    } else if (j.status === "failed") {
+      clearInterval(pollTimer);
+      pollTimer = null;
+      showError("处理失败：" + (j.error || "unknown"));
+      resetProgress();
+    }
+  } catch (e) {
+    console.warn("poll failed:", e);
+  }
+}
+
 function pollProgress() {
   if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(async () => {
-    if (!activeJobId) return;
-    try {
-      const r = await fetch(`/api/jobs/${activeJobId}`);
-      if (!r.ok) {
-        // 404 = job 已不存在（重启 / LRU 淘汰 / batch 被收）
-        // 永久停掉轮询，提示用户
-        clearInterval(pollTimer);
-        pollTimer = null;
-        activeJobId = null;
-        const msg = r.status === 404 ? "任务不存在（可能已被清理）" : `轮询失败：HTTP ${r.status}`;
-        showError(msg);
-        resetProgress();
-        return;
-      }
-      const j = await r.json();
-      barFill.style.width = j.progress + "%";
-      const phaseLabel = phaseToLabel(j.phase);
-      progressText.textContent = phaseLabel ? `${phaseLabel} · ${j.progress}%` : `${j.status} · ${j.progress}%`;
-      progressDetail.textContent = `任务 ${activeJobId}`;
-
-      if (j.status === "done") {
-        clearInterval(pollTimer);
-        pollTimer = null;
-        downloadResult();
-      } else if (j.status === "failed") {
-        clearInterval(pollTimer);
-        pollTimer = null;
-        showError("处理失败：" + (j.error || "unknown"));
-        resetProgress();
-      }
-    } catch (e) {
-      console.warn("poll failed:", e);
-    }
-  }, 500);
+  // 立刻触发一次（不等第一个 interval tick），让前端 POST 返回后第一时间看到中间状态；
+  // 后续按 500ms 间隔轮询（足够 LAN 实时，又不会把后端刷挂）。
+  _pollOnce();
+  pollTimer = setInterval(_pollOnce, 500);
 }
 
 async function downloadResult() {
