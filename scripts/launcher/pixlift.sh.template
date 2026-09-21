@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# pixlift launcher (installed at ~/bin/pixlift)
+# Template — $PROJECT_DIR replaced by install.sh at install time.
+# 用法：
+#   pixlift           — 启动（已运行则提示）
+#   pixlift status    — 查看健康状态
+#   pixlift restart   — 重启
+#   pixlift logs      — 跟踪日志
+#   pixlift open      — 浏览器打开
+
+set -euo pipefail
+PROJ="$PROJECT_DIR"
+START="$PROJ/scripts/start.sh"
+STOP="$PROJ/scripts/stop.sh"
+PID_FILE="$PROJ/pixlift.pid"
+LOG_FILE="$PROJ/logs/pixlift.log"
+PORT=8000
+URL="http://localhost:$PORT"
+
+cmd="${1:-start}"
+case "$cmd" in
+    start|"")
+        "$START"
+        echo
+        echo "→ 打开 $URL"
+        ;;
+    stop)
+        LAUNCHD_LISTED=$(launchctl list 2>/dev/null | grep -c "com.saurojohn.pixlift" || true)
+        if [ "${LAUNCHD_LISTED:-0}" -gt 0 ]; then
+            launchctl unload "$HOME/Library/LaunchAgents/com.saurojohn.pixlift.plist" 2>/dev/null || true
+            echo "[pixlift] unloaded launchd job (autostart disabled)"
+        fi
+        LISTEN_PID=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
+        if [ -n "$LISTEN_PID" ]; then
+            kill "$LISTEN_PID" 2>/dev/null && echo "[pixlift] killed pid=$LISTEN_PID"
+        fi
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1 > /dev/null || break
+            sleep 0.3
+        done
+        "$STOP" 2>/dev/null || true
+        rm -f "$PID_FILE" "$PROJ/.pixlift.pgid"
+        echo "[pixlift] stopped"
+        ;;
+    restart)
+        "$STOP" 2>/dev/null || true
+        sleep 1
+        "$START"
+        ;;
+    status)
+        if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+            echo "PixLift 运行中 (pid=$(cat "$PID_FILE"), via pixlift)"
+            curl -fsS "$URL/api/health" | head -c 200; echo
+            exit 0
+        fi
+        LAUNCHD_LISTED=$(launchctl list 2>/dev/null | grep -c "com.saurojohn.pixlift" || true)
+        LISTEN_PID=$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1)
+        if [ "${LAUNCHD_LISTED:-0}" -gt 0 ] && [ -n "$LISTEN_PID" ]; then
+            echo "PixLift 运行中 (pid=$LISTEN_PID, via launchd)"
+            curl -fsS "$URL/api/health" | head -c 200; echo
+            exit 0
+        fi
+        if [ -n "$LISTEN_PID" ]; then
+            echo "PixLift 运行中 (pid=$LISTEN_PID, unknown launcher)"
+            exit 0
+        fi
+        echo "PixLift 未运行"
+        exit 1
+        ;;
+    logs)
+        if [ -f "$LOG_FILE" ]; then
+            tail -f "$LOG_FILE"
+        else
+            echo "无日志（$LOG_FILE）"
+            exit 1
+        fi
+        ;;
+    open)
+        open "$URL"
+        ;;
+    *)
+        echo "用法: pixlift [start|stop|restart|status|logs|open]"
+        exit 1
+        ;;
+esac

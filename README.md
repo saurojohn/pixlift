@@ -72,6 +72,23 @@ uvicorn pixlift.app:app --host 0.0.0.0 --port 8000
 
 API 文档：`http://localhost:8000/docs`。
 
+### 4. macOS 一键本地安装（可选）
+
+把 PixLift 装成 macOS 应用 + 开机自启 + `pixlift` 命令：
+
+```bash
+./install.sh           # 安装：~/bin/pixlift + ~/Applications/PixLift.app + LaunchAgent
+./install.sh --uninstall  # 卸载
+./install.sh --no-app   # 只装 pixlift 命令（不建 .app / LaunchAgent）
+```
+
+装完后：
+- 双击 `~/Applications/PixLift.app` 图标 → 浏览器打开
+- 终端跑 `pixlift status / open / logs / restart` 控制服务
+- 开机自动启动 + 进程崩溃自动重启（launchd KeepAlive）
+
+Linux 用户跑 `./install.sh` 会跳过 .app 和 LaunchAgent 部分，只装 `~/.local/bin/pixlift`。
+
 ---
 
 ## 模型

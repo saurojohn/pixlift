@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# PixLift.app launcher
+# - 双击 .app 时由 macOS 调用
+# - 检查后台服务（如未跑则启动），然后打开浏览器
+# - $PROJECT_DIR 由 install.sh 替换为绝对路径
+
+set -e
+
+PROJ="$PROJECT_DIR"
+START="$PROJ/scripts/start.sh"
+URL="http://localhost:8000"
+PORT=8000
+
+check_running() {
+    lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | head -1
+}
+
+RUNNING_PID=$(check_running)
+if [ -z "$RUNNING_PID" ]; then
+    LAUNCHD_LISTED=$(launchctl list 2>/dev/null | grep -c "com.saurojohn.pixlift" || true)
+    if [ "${LAUNCHD_LISTED:-0}" -gt 0 ]; then
+        for _ in 1 2 3 4 5 6; do
+            sleep 1
+            RUNNING_PID=$(check_running)
+            [ -n "$RUNNING_PID" ] && break
+        done
+    fi
+    if [ -z "$RUNNING_PID" ]; then
+        "$START" >/dev/null 2>&1 || true
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 1
+            RUNNING_PID=$(check_running)
+            [ -n "$RUNNING_PID" ] && break
+        done
+    fi
+fi
+
+if [ -n "$(check_running)" ]; then
+    open "$URL"
+else
+    osascript -e 'display alert "PixLift 启动失败" message "后端服务没有监听 :8000，请运行 pixlift status 查看" as critical' 2>/dev/null || true
+fi
