@@ -311,7 +311,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
                 "Engine not initialized (binary missing). Check /api/health.",
             )
 
-        # 决定 sync vs async
+        # 决定 sync vs async：sync 现在只标记 job.sync 字段用于统计；
+        # 两个分支都返回 202 + job_id（前端统一走 poll → download 流程），
+        # 这样小图（sync）也能看到分阶段进度（5%→40%→85%→95%→100%）。
         is_sync = len(data) < settings.sync_threshold_bytes
 
         job = await job_mgr.create(
@@ -328,25 +330,13 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         output_path = Path(job.work_dir) / f"output.{out_fmt}"
         await asyncio.to_thread(input_path.write_bytes, data)
 
-        if is_sync:
-            await _run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality)
-            if job.status == "done":
-                w, h = job.output_dim or (0, 0)
-                return FileResponse(
-                    path=str(output_path),
-                    media_type=content_type_for(out_fmt),
-                    filename=f"pixlift_{w}x{h}.{out_fmt}",
-                    headers={
-                        "X-Job-Id": job.id,
-                        "X-Output-Width": str(w),
-                        "X-Output-Height": str(h),
-                    },
-                )
-            raise HTTPException(
-                500, f"Sync processing failed: {job.error or 'unknown'}"
-            )
-
-        _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality), job_id=job.id)
+        # sync 和 async 都用 background task，让 _run_job 阶段化进度能被前端轮询到。
+        # sync 路径不再直接返回文件（inline-file response）；统一走
+        # /api/jobs/{id}/download，多一次 round-trip 但能看到完整进度条。
+        _track_task(
+            _run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality),
+            job_id=job.id,
+        )
         out_w, out_h = meta.width * actual_scale, meta.height * actual_scale
         return JSONResponse(
             status_code=202,
@@ -569,6 +559,10 @@ async def _run_job(
     except Exception:
         log.exception("failed to mark running: %s", job.id)
 
+    # sync/async 都走后台 task（POST 立即返回 job_id，前端轮询）。
+    # 这里每个 on_progress 后 sleep(0) 让主 loop 有机会处理 worker thread
+    # schedule 进来的其它进度回调（run_coroutine_threadsafe 进的是主 loop 队列，
+    # 不是 await 链的一部分）。
     async def on_progress(p: int, phase: str | None = None) -> None:
         # 允许 100（final done），中间帧 clamp 到 [5, 95]（95 后由 _run_job
         # 自己 fire 100，避免 worker 线程的 95 race overwirte done 状态）
@@ -579,6 +573,8 @@ async def _run_job(
             await mgr.update(job.id, progress=clamped, phase=phase)
         except Exception:
             log.exception("progress update failed: %s", job.id)
+        # 让 worker 调度的其它进度回调有机会跑
+        await asyncio.sleep(0)
 
     started = time.monotonic()
     try:

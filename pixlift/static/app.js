@@ -36,8 +36,6 @@ const modeButtons = document.querySelectorAll(".mode-btn");
 const rowScale = $("row-scale");
 const rowLongEdge = $("row-long-edge");
 
-const SYNC_THRESHOLD = 2 * 1024 * 1024; // 2 MB
-
 // 阶段名 → 中文标签
 function phaseToLabel(phase) {
   if (!phase) return "";
@@ -220,15 +218,9 @@ submitBtn.addEventListener("click", async () => {
   barFill.style.width = "0%";
   barFill.classList.remove("indeterminate");
   const isSingle = currentFiles.length === 1;
-  const isSyncSingle = isSingle && currentFiles[0].size < SYNC_THRESHOLD;
-  const willBeSync = isSyncSingle;
-  // 同步路径（小图）没有 job_id 可轮询，用 indeterminate 动画表示在处理
-  if (willBeSync) {
-    barFill.classList.add("indeterminate");
-    progressText.textContent = "处理中…";
-  } else {
-    progressText.textContent = "上传中…";
-  }
+  // 所有单图都走后台任务 + 轮询（POST 返回 job_id，然后前端 poll）。
+  // 这样前端能看到 5%→40%→85%→95%→100% 完整分阶段进度。
+  progressText.textContent = "上传中…";
   progressDetail.textContent = "";
 
   abortController = new AbortController();
@@ -261,20 +253,8 @@ submitBtn.addEventListener("click", async () => {
       throw new Error(formatApiError(err, resp.status));
     }
 
-    // 单张同步：直接 blob
-    if (isSyncSingle) {
-      const blob = await resp.blob();
-      const jobId = resp.headers.get("X-Job-Id") || "";
-      const w = parseInt(resp.headers.get("X-Output-Width") || "0", 10);
-      const h = parseInt(resp.headers.get("X-Output-Height") || "0", 10);
-      barFill.classList.remove("indeterminate");
-      barFill.style.width = "100%";
-      progressText.textContent = "完成 · 100%";
-      showResult(blob, w, h, jobId);
-      return;
-    }
-
-    // 异步：job_id 或 batch_id
+    // 单图：服务端一律返回 {job_id} + 202，前端轮询。
+    // 多图：返回 {batch_id}，走 batch 轮询。
     const body = await resp.json();
     if (body.batch_id) {
       activeBatchId = body.batch_id;
@@ -282,6 +262,8 @@ submitBtn.addEventListener("click", async () => {
     } else if (body.job_id) {
       activeJobId = body.job_id;
       pollProgress();
+    } else {
+      throw new Error("未收到 job_id 或 batch_id");
     }
   } catch (e) {
     if (e.name !== "AbortError") {

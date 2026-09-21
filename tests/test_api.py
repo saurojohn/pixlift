@@ -139,18 +139,31 @@ def test_upscale_422_for_bad_model(client: TestClient):
         pass
 
 
-def test_upscale_503_when_no_engine(client: TestClient):
-    """client fixture 无模型目录 → engine.health_check 报无模型但 init OK。
-    上传请求会进入 _run_job → EngineError("Model weights not found") → 500。"""
+def test_upscale_returns_202_when_no_model(client: TestClient):
+    """client fixture 无模型目录 → POST 立刻返 202 + job_id，
+    后台 _run_job 跑到 _ensure_torch 时报模型缺失 → status=failed。
+    早期版本 sync path 直接返 500；现在统一走 async 后端任务。"""
+    import time as _t
     img = _png_bytes()
     r = client.post(
         "/api/upscale",
         files={"image": ("t.png", img, "image/png")},
         data={"model": "realesrgan-x4plus", "scale": "4", "format": "png"},
     )
-    # PyTorch 后端：engine init OK 但 upscale 时报模型缺失 → 500
-    assert r.status_code == 500
-    assert "model" in r.text.lower() or "weight" in r.text.lower()
+    assert r.status_code == 202, r.text
+    job_id = r.json()["job_id"]
+    # 等后台任务跑到终态
+    deadline = _t.time() + 15
+    status = None
+    while _t.time() < deadline:
+        j = client.get(f"/api/jobs/{job_id}").json()
+        status = j["status"]
+        if status in ("done", "failed"):
+            break
+        _t.sleep(0.1)
+    assert status == "failed", f"expected failed, got {status}: {client.get(f'/api/jobs/{job_id}').json()}"
+    err = client.get(f"/api/jobs/{job_id}").json().get("error", "")
+    assert "model" in err.lower() or "weight" in err.lower() or "not found" in err.lower()
 
 
 def test_job_404_for_unknown_id(client: TestClient):
@@ -189,14 +202,34 @@ needs_pytorch = pytest.mark.skipif(
 
 @needs_pytorch
 def test_upscale_end_to_end_small(client_with_model):
-    """小图同步路径。"""
+    """小图：POST 返回 202 + job_id，前端轮询 + 下载。
+
+    早期版本 sync path 直接返回 200 + blob（inline-file），
+    但前端拿不到分阶段进度（POST 期间所有 phase 都被后续 phase 覆盖）。
+    现在统一走 202 + poll 流程。
+    """
     img = _png_bytes(w=128, h=128)
     r = client_with_model.post(
         "/api/upscale",
         files={"image": ("t.png", img, "image/png")},
         data={"model": "realesrgan-x4plus", "scale": "4", "format": "png"},
     )
-    assert r.status_code == 200, r.text
+    assert r.status_code == 202, r.text
+    body = r.json()
+    job_id = body["job_id"]
+    assert job_id
+    import time as _t
+    deadline = _t.time() + 60
+    status = "queued"
+    while _t.time() < deadline:
+        j = client_with_model.get(f"/api/jobs/{job_id}").json()
+        status = j["status"]
+        if status in ("done", "failed"):
+            break
+        _t.sleep(0.2)
+    assert status == "done", f"job did not finish: {client_with_model.get(f'/api/jobs/{job_id}').json()}"
+    r = client_with_model.get(f"/api/jobs/{job_id}/download")
+    assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     out = Image.open(io.BytesIO(r.content))
     assert out.size == (512, 512)

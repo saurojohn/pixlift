@@ -193,8 +193,22 @@ def client(tmp_path):
             moved.rename(bundled)
 
 
+def _wait_job_finished(client: TestClient, job_id: str, timeout_s: float = 15.0) -> dict:
+    """等后台 _run_job 跑到终态（done/failed）。返回最终 job dict。"""
+    import time as _t
+    deadline = _t.time() + timeout_s
+    status = None
+    while _t.time() < deadline:
+        j = client.get(f"/api/jobs/{job_id}").json()
+        status = j["status"]
+        if status in ("done", "failed"):
+            return j
+        _t.sleep(0.1)
+    raise AssertionError(f"job {job_id} did not finish in {timeout_s}s (last status={status})")
+
+
 def test_upscale_accepts_long_edge_param(client: TestClient):
-    """long_edge 参数合法时走通校验到 engine 检查（503）。"""
+    """long_edge 参数合法时走通校验到后台 _run_job → 无模型 → status=failed。"""
     r = client.post(
         "/api/upscale",
         files={"image": ("t.png", _png(800, 600), "image/png")},
@@ -205,8 +219,11 @@ def test_upscale_accepts_long_edge_param(client: TestClient):
             "format": "png",
         },
     )
-    # PyTorch 后端：engine init OK 但无模型 → upscale 时报模型缺失 → 500
-    assert r.status_code == 500
+    # 统一走 async：POST 立即 202 + job_id，后台任务跑 engine → 无模型 → failed
+    assert r.status_code == 202, r.text
+    job_id = r.json()["job_id"]
+    final = _wait_job_finished(client, job_id)
+    assert final["status"] == "failed"
 
 
 def test_long_edge_takes_priority_over_scale(client: TestClient):
@@ -221,8 +238,11 @@ def test_long_edge_takes_priority_over_scale(client: TestClient):
             "format": "png",
         },
     )
-    # 长边 2048 + 输入 800 → 3x → 应走通到 engine check（503 binary 缺失）
-    assert r.status_code == 500  # PyTorch: engine OK, 但 upscale 时无模型
+    # 长边 2048 + 输入 800 → 3x → 应走通到 engine check（无模型 → 任务 failed）
+    assert r.status_code == 202, r.text
+    job_id = r.json()["job_id"]
+    final = _wait_job_finished(client, job_id)
+    assert final["status"] == "failed"
 
 
 def test_upscale_rejects_bad_long_edge(client: TestClient):
@@ -251,7 +271,11 @@ def test_upscale_accepts_quality_param(client: TestClient):
             "quality": "85",
         },
     )
-    assert r.status_code == 500  # engine OK 但 upscale 失败（无模型）
+    # 统一走 async：POST 202 + job_id；engine OK 但 upscale 无模型 → failed
+    assert r.status_code == 202, r.text
+    job_id = r.json()["job_id"]
+    final = _wait_job_finished(client, job_id)
+    assert final["status"] == "failed"
 
 
 def test_upscale_rejects_bad_quality(client: TestClient):
