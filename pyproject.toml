@@ -47,3 +47,26 @@ exclude = ["tests*"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# Ruff 配置：
+# - B008: FastAPI 的 `image: UploadFile = File(...)` 是官方文档用法，禁止调用在默认参数会误报
+# - I001: engine.py 内的 lazy import 顺序按依赖排列（basicsr 在 realesrgan 前）
+# - bin_setup.py 是 ncnn 时代遗留（PyTorch 后端已替换），不再维护；不在 ruff 检查范围内
+[tool.ruff]
+extend-exclude = ["pixlift/bin_setup.py"]
+
+[tool.ruff.lint]
+# PyTorch / 第三方代码本来就 raise 很宽，不强制 BLE001；PLR1730 风格调整不值得为它大改
+ignore = [
+    "BLE001",  # blind except: 太多地方需要
+    "PLR1730", # if → max()：不影响行为
+    "RUF100",  # unused noqa（CI 偶尔 stale）
+    "UP037",   # quoted type annotation: Engine 在前向引用里仍需要引号
+]
+
+# B008 误报：FastAPI 的 `File()` / `Form()` 是官方文档用法，调用在参数默认里是规范
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.File",
+    "fastapi.Form",
+]

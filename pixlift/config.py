@@ -1,4 +1,5 @@
 """环境变量配置（集中管理 + 单一来源）。"""
+
 from __future__ import annotations
 
 import os
@@ -69,7 +70,9 @@ def load_settings() -> Settings:
         log_level=os.environ.get("LOG_LEVEL", "info").strip(),
         max_upload_mb=_get_int("MAX_UPLOAD_MB", 20, 1, 1024),
         max_long_edge=_get_int("MAX_LONG_EDGE", 4096, 64, 16384),
-        sync_threshold_bytes=_get_int("SYNC_THRESHOLD_BYTES", 2 * 1024 * 1024, 1024, 100 * 1024 * 1024),
+        sync_threshold_bytes=_get_int(
+            "SYNC_THRESHOLD_BYTES", 2 * 1024 * 1024, 1024, 100 * 1024 * 1024
+        ),
         job_timeout_s=_get_int("JOB_TIMEOUT_S", 120, 1, 86400),
         keep_tmp_hours=_get_int("KEEP_TMP_HOURS", 0, 0, 720),
         max_jobs=_get_int("MAX_JOBS", 50, 1, 10000),

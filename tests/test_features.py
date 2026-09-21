@@ -319,7 +319,9 @@ def test_batch_rejects_too_many(client_with_model: TestClient):
 
 
 def test_batch_503_without_engine(client: TestClient):
-    """client fixture 无模型 → batch 接受请求（202），但 job 内部 EngineError "Model weights not found" → job.status = "failed"。"""
+    """client fixture 无模型 → batch 接受请求（202），但 job 内部 EngineError
+    "Model weights not found"（本地）/ "PyTorch not installed"（CI）→ job.status = "failed"。
+    测试只关心 batch 接受请求 + 所有 job 进入 failed 终态。"""
     files = [
         ("images", (f"t{i}.png", _png(), "image/png")) for i in range(3)
     ]
@@ -339,7 +341,10 @@ def test_batch_503_without_engine(client: TestClient):
         if all(j["status"] in ("done", "failed") for j in batch["jobs"]):
             break
         _t.sleep(0.2)
-    assert any(j["status"] == "failed" and "weight" in (j.get("error") or "").lower() for j in batch["jobs"])
+    assert batch["failed"] == len(batch["jobs"]), f"expected all jobs failed: {batch}"
+    # 错误信息可以是 "weight"（本地）/ "pytorch"/"installed"（CI）
+    err_text = " ".join((j.get("error") or "") for j in batch["jobs"]).lower()
+    assert any(s in err_text for s in ("model", "weight", "pytorch", "installed", "not found"))
 
 
 def test_batch_rejects_non_image(client: TestClient):

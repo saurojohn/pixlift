@@ -2,14 +2,14 @@
 
 不持久化：进程重启 = job 全部丢失。V1 接受这个权衡（计划文档 §Non-Goals）。
 """
+
 from __future__ import annotations
 
 import asyncio
-import logging
 import secrets
 import shutil
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -202,7 +202,11 @@ class JobManager:
         evicted = 0
         if len(self._jobs) > self.max_count:
             finished = sorted(
-                ((jid, j) for jid, j in self._jobs.items() if j.finished_at is not None),
+                (
+                    (jid, j)
+                    for jid, j in self._jobs.items()
+                    if j.finished_at is not None
+                ),
                 key=lambda kv: kv[1].finished_at or 0,
             )
             excess = len(self._jobs) - self.max_count
@@ -223,6 +227,7 @@ class JobManager:
                 shutil.rmtree(p)
             except OSError as e:
                 import logging
+
                 logging.getLogger(__name__).warning(
                     "rmtree failed for %s: %s — leaking tmp dir", p, e
                 )
@@ -234,6 +239,7 @@ class JobManager:
             return 0
         known = {j.id for j in self._jobs.values()}
         import logging
+
         log = logging.getLogger(__name__)
         for child in self.tmp_root.iterdir():
             if child.is_dir() and child.name not in known:

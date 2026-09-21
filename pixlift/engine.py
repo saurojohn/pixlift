@@ -10,6 +10,7 @@
 - quality 后处理：JPG/WebP 用 Pillow 重编码（与原方案一致）
 - 进度通过 on_progress 回调（每 N 步触发一次，因为 PyTorch 不像 binary 那样打百分比）
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -17,9 +18,10 @@ import os
 import threading
 import time
 from collections import deque
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Awaitable, Callable, Literal
+from typing import Literal
 
 from PIL import Image, UnidentifiedImageError
 
@@ -102,24 +104,52 @@ class _UpsamplerCache:
             if cached is not None:
                 return cached
             # realesrgan 包内 import：延后到 Engine.__init__ 之后的首次 upscale
-            from realesrgan import RealESRGANer
             from basicsr.archs.rrdbnet_arch import RRDBNet
             from basicsr.archs.srvgg_arch import SRVGGNetCompact
+            from realesrgan import RealESRGANer
 
             # 根据模型名选 architecture
             model_cls = SRVGGNetCompact if "animevideov3" in model_name else RRDBNet
             # 不同模型的 network 配置（与官方权重匹配）
             if "animevideov3" in model_name:
                 # SRVGGNetCompact（轻量）
-                model_inst = model_cls(num_in_ch=3, num_out_ch=3, num_feat=64, num_conv=16, upscale=4, act_type="prelu")
+                model_inst = model_cls(
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    num_feat=64,
+                    num_conv=16,
+                    upscale=4,
+                    act_type="prelu",
+                )
             elif "x4plus-anime" in model_name:
                 # RealESRGAN_x4plus_anime_6B.pth 是 6 个 RRDB blocks（小网络）
-                model_inst = model_cls(num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=6, num_grow_ch=32)
+                model_inst = model_cls(
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    scale=4,
+                    num_feat=64,
+                    num_block=6,
+                    num_grow_ch=32,
+                )
             elif "x4plus" in model_name:
                 # RealESRGAN_x4plus.pth / RealESRNet_x4plus.pth 都是 23 个 RRDB blocks
-                model_inst = model_cls(num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=23, num_grow_ch=32)
+                model_inst = model_cls(
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    scale=4,
+                    num_feat=64,
+                    num_block=23,
+                    num_grow_ch=32,
+                )
             else:
-                model_inst = model_cls(num_in_ch=3, num_out_ch=3, scale=4, num_feat=64, num_block=23, num_grow_ch=32)
+                model_inst = model_cls(
+                    num_in_ch=3,
+                    num_out_ch=3,
+                    scale=4,
+                    num_feat=64,
+                    num_block=23,
+                    num_grow_ch=32,
+                )
 
             upsampler = RealESRGANer(
                 scale=_scale_for_model(model_name),
@@ -187,7 +217,9 @@ class Engine:
     model_dir: Path
     timeout_s: int = 120
     extra_args: list[str] = field(default_factory=list)
-    _upsampler_cache: _UpsamplerCache = field(default_factory=_UpsamplerCache, init=False, repr=False)
+    _upsampler_cache: _UpsamplerCache = field(
+        default_factory=_UpsamplerCache, init=False, repr=False
+    )
     _torch_dtype: object = field(default=None, init=False, repr=False)
     _torch_device: object = field(default=None, init=False, repr=False)
     _initialized: bool = field(default=False, init=False, repr=False)
@@ -211,7 +243,9 @@ class Engine:
         return cls(
             binary_path=binary_path,
             model_dir=model_dir,
-            timeout_s=timeout_s if timeout_s is not None else int(os.environ.get("JOB_TIMEOUT_S", "120")),
+            timeout_s=timeout_s
+            if timeout_s is not None
+            else int(os.environ.get("JOB_TIMEOUT_S", "120")),
             extra_args=list(extra_args) if extra_args else [],
         )
 
@@ -274,7 +308,9 @@ class Engine:
 
         # 进度回调：异步任务中触发（这里同步跑，转发回调）
         stderr_lines: deque[str] = deque(maxlen=_STDERR_RING_MAXLEN)
-        stderr_lines.append(f"engine=python-realesrgan device={self._torch_device} tile={tile}")
+        stderr_lines.append(
+            f"engine=python-realesrgan device={self._torch_device} tile={tile}"
+        )
 
         # 捕获当前 event loop，用于 worker 线程里 schedule 异步进度回调
         loop = asyncio.get_running_loop()
@@ -339,6 +375,7 @@ class Engine:
         def _do_upscale() -> None:
             # 阶段 2：预处理 + 加载 upsampler（这步慢，主要是 torch.load）
             import torch as _t
+
             upsampler = self._upsampler_cache.get(
                 model_name=model,
                 tile_size=tile,
@@ -350,8 +387,9 @@ class Engine:
             # realesrgan 在内部用 torch.no_grad()
             with _t.inference_mode():
                 # realesrgan.enhance 期望 numpy BGR 数组
-                import numpy as _np
                 import cv2 as _cv2
+                import numpy as _np
+
                 with Image.open(input_path) as _im:
                     _img_pil = _im.convert("RGB")
                 _img_bgr = _cv2.cvtColor(_np.array(_img_pil), _cv2.COLOR_RGB2BGR)
@@ -387,9 +425,7 @@ class Engine:
                     timeout=self.timeout_s,
                 )
         except asyncio.TimeoutError as e:
-            raise EngineError(
-                f"Engine timeout after {self.timeout_s}s"
-            ) from e
+            raise EngineError(f"Engine timeout after {self.timeout_s}s") from e
         except Exception as e:
             raise EngineError(f"realesrgan upscale failed: {e}") from e
 
@@ -443,7 +479,9 @@ class Engine:
             info["vulkan"] = False  # PyTorch 后端不再有 Vulkan 概念
             info["gpu"] = f"{self._torch_device} ({self._torch_dtype})"
             # 就绪条件：torch 可用 + 至少 1 个 .pth 模型
-            files = list(self.model_dir.glob("*.pth")) if self.model_dir.exists() else []
+            files = (
+                list(self.model_dir.glob("*.pth")) if self.model_dir.exists() else []
+            )
             info["model_files"] = sorted(p.name for p in files)
             # 解析为逻辑模型名（前端比对用的 key）
             available_logical: set[str] = set()
@@ -455,14 +493,18 @@ class Engine:
             info["ready"] = len(files) > 0
         except EngineError as e:
             info["gpu"] = f"unavailable: {e}"
-        except Exception as e:
+        except Exception as e:  # noqa: B904
             info["gpu"] = f"probe failed: {e}"
 
         return info
 
 
 def _env_fp32() -> bool:
-    return os.environ.get("REAL_ESRGAN_FP32", "").strip().lower() in ("1", "true", "yes")
+    return os.environ.get("REAL_ESRGAN_FP32", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 # 探测用的常量（兼容旧 API）

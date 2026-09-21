@@ -2,6 +2,7 @@
 
 所有失败抛 HTTPException，FastAPI 直接渲染 JSON 错误响应。
 """
+
 from __future__ import annotations
 
 import io
@@ -60,7 +61,7 @@ def detect_format(head: bytes) -> str | None:
 
 def _install_decompression_bomb_guard(max_long_edge: int) -> None:
     """设 PIL 全局上限 = max_long_edge^2 * 4，超过即抛 DecompressionBombError。"""
-    cap = max(DEFAULT_MAX_IMAGE_PIXELS, (max_long_edge ** 2) * 4)
+    cap = max(DEFAULT_MAX_IMAGE_PIXELS, (max_long_edge**2) * 4)
     # 调高（不能调低）以兼容更大的输入
     if Image.MAX_IMAGE_PIXELS is None or cap > Image.MAX_IMAGE_PIXELS:
         Image.MAX_IMAGE_PIXELS = cap
@@ -85,9 +86,7 @@ def validate_image_bytes(
 
     # 最小 12 字节才能识别 WebP 容器
     if len(data) < 12:
-        raise HTTPException(
-            status_code=415, detail="File too small to be an image"
-        )
+        raise HTTPException(status_code=415, detail="File too small to be an image")
 
     fmt = detect_format(data[:12])
     if fmt is None:
@@ -134,7 +133,12 @@ def validate_image_bytes(
                 f"'{pil_format}'. Refusing to process."
             ),
         )
-    if pil_format_verify and pil_format_verify.lower() not in {"png", "jpeg", "gif", "webp"}:
+    if pil_format_verify and pil_format_verify.lower() not in {
+        "png",
+        "jpeg",
+        "gif",
+        "webp",
+    }:
         raise HTTPException(
             status_code=415, detail=f"Unsupported decoded format: {pil_format_verify}"
         )

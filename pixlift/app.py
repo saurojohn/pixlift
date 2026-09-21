@@ -11,6 +11,7 @@
 - GET  /api/batches/{id}       → batch 进度 + job_id 列表
 - GET  /api/batches/{id}/zip   → 全部 done 的输出打包 ZIP
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,11 +22,10 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: B008
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 
-from pixlift import STATIC_DIR, __version__, get_binary_path
+from pixlift import STATIC_DIR, __version__
 from pixlift.config import Settings, load_settings
 from pixlift.engine import (
     SUPPORTED_LONG_EDGES,
@@ -106,7 +106,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
     job_mgr = JobManager(
         tmp_root=settings.tmp_root,
         max_count=settings.max_jobs,
-        max_age_s=600 if settings.keep_tmp_hours == 0 else settings.keep_tmp_hours * 3600,
+        max_age_s=600
+        if settings.keep_tmp_hours == 0
+        else settings.keep_tmp_hours * 3600,
     )
     job_mgr.cleanup_stale_tmp()
     batch_mgr = BatchManager(max_count=settings.max_batches)
@@ -148,7 +150,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
                         timeout=5,
                     )
                 except asyncio.TimeoutError:
-                    log.warning("%d active tasks did not finish in 5s", len(_active_tasks))
+                    log.warning(
+                        "%d active tasks did not finish in 5s", len(_active_tasks)
+                    )
                     for t in _active_tasks:
                         t.cancel()
             if cleanup_task is not None:
@@ -178,7 +182,6 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         )
 
     # ---- 静态资源（开发期禁缓存，避免改 JS 不生效）----
-    from starlette.responses import FileResponse
     from starlette.staticfiles import StaticFiles as _SF
 
     class NoCacheStatic(_SF):
@@ -223,7 +226,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         except (TypeError, ValueError):
             raise HTTPException(422, f"Invalid scale: {scale_raw}")
         if s not in SUPPORTED_SCALES:
-            raise HTTPException(422, f"Unsupported scale: {s}. Allowed: {list(SUPPORTED_SCALES)}")
+            raise HTTPException(
+                422, f"Unsupported scale: {s}. Allowed: {list(SUPPORTED_SCALES)}"
+            )
         return s
 
     def _parse_quality(quality_raw: str | None, fmt: str) -> int | None:
@@ -268,9 +273,7 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         info["supported_models"] = sorted(SUPPORTED_MODELS)
         info["supported_scales"] = list(SUPPORTED_SCALES)
         info["supported_long_edges"] = list(SUPPORTED_LONG_EDGES)
-        return JSONResponse(
-            status_code=200 if info["ok"] else 503, content=info
-        )
+        return JSONResponse(status_code=200 if info["ok"] else 503, content=info)
 
     @app.post("/api/upscale")
     async def upscale(
@@ -292,7 +295,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         max_bytes = settings.max_upload_mb * 1024 * 1024
         data = await image.read(max_bytes + 1)
         if len(data) > max_bytes:
-            raise HTTPException(413, f"Upload too large. Max {settings.max_upload_mb} MB.")
+            raise HTTPException(
+                413, f"Upload too large. Max {settings.max_upload_mb} MB."
+            )
 
         meta = validate_image_bytes(
             data,
@@ -301,7 +306,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         )
 
         # scale/long_edge → 实际倍率
-        actual_scale = _parse_scale_or_longedge(scale, long_edge, meta.width, meta.height)
+        actual_scale = _parse_scale_or_longedge(
+            scale, long_edge, meta.width, meta.height
+        )
         actual_quality = _parse_quality(quality, out_fmt)
 
         # 参数 + 输入都合法后才检查 engine 可用性
@@ -334,7 +341,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
         # sync 路径不再直接返回文件（inline-file response）；统一走
         # /api/jobs/{id}/download，多一次 round-trip 但能看到完整进度条。
         _track_task(
-            _run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality),
+            _run_job(
+                engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality
+            ),
             job_id=job.id,
         )
         out_w, out_h = meta.width * actual_scale, meta.height * actual_scale
@@ -388,7 +397,13 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
             meta = validate_image_bytes(
                 data, max_bytes=max_bytes, max_long_edge=settings.max_long_edge
             )
-            parsed.append((data, (meta.width, meta.height), meta.format if meta.format != "jpeg" else "jpg"))
+            parsed.append(
+                (
+                    data,
+                    (meta.width, meta.height),
+                    meta.format if meta.format != "jpeg" else "jpg",
+                )
+            )
 
         # 计算每个的实际倍率（long_edge 模式按各自 input 长边算）
         # 简化：所有图片共用同一个 scale（除非 long_edge 模式，则各自算）
@@ -398,7 +413,9 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
                 for (_, (w, h), _) in parsed
             ]
         else:
-            scales = [_parse_scale_or_longedge(scale, None, w, h) for (_, (w, h), _) in parsed]
+            scales = [
+                _parse_scale_or_longedge(scale, None, w, h) for (_, (w, h), _) in parsed
+            ]
 
         actual_quality = _parse_quality(quality, out_fmt)
 
@@ -418,7 +435,18 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
             output_path = Path(job.work_dir) / f"output.{out_fmt}"
             await asyncio.to_thread(input_path.write_bytes, data)
             # 串行：每个任务等上一个完成
-            _track_task(_run_job(engine, job_mgr, job, input_path, output_path, out_fmt, actual_quality), job_id=job.id)
+            _track_task(
+                _run_job(
+                    engine,
+                    job_mgr,
+                    job,
+                    input_path,
+                    output_path,
+                    out_fmt,
+                    actual_quality,
+                ),
+                job_id=job.id,
+            )
 
         return JSONResponse(
             status_code=202,
@@ -518,6 +546,7 @@ def _make_app(settings: Settings | None = None) -> FastAPI:
 
         # 打包到临时文件
         zip_path = settings.tmp_root / f"{batch.id}.zip"
+
         # 用线程 offload 避免阻塞 event loop
         def _zip() -> None:
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:

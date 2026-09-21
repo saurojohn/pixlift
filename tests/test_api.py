@@ -142,7 +142,12 @@ def test_upscale_422_for_bad_model(client: TestClient):
 def test_upscale_returns_202_when_no_model(client: TestClient):
     """client fixture 无模型目录 → POST 立刻返 202 + job_id，
     后台 _run_job 跑到 _ensure_torch 时报模型缺失 → status=failed。
-    早期版本 sync path 直接返 500；现在统一走 async 后端任务。"""
+    早期版本 sync path 直接返 500；现在统一走 async 后端任务。
+
+    本地（torch 已装）：error 含 "Model weights not found"
+    CI（torch 未装）：error 含 "PyTorch not installed. Run: pip install ..."
+    两种都表示 engine 不可用，测试只关心 job 进入 failed 终态。
+    """
     import time as _t
     img = _png_bytes()
     r = client.post(
@@ -163,7 +168,9 @@ def test_upscale_returns_202_when_no_model(client: TestClient):
         _t.sleep(0.1)
     assert status == "failed", f"expected failed, got {status}: {client.get(f'/api/jobs/{job_id}').json()}"
     err = client.get(f"/api/jobs/{job_id}").json().get("error", "")
-    assert "model" in err.lower() or "weight" in err.lower() or "not found" in err.lower()
+    err_l = err.lower()
+    # 接受任意一个：model missing / torch missing / weights missing / pytorch
+    assert any(s in err_l for s in ("model", "weight", "not found", "pytorch", "installed"))
 
 
 def test_job_404_for_unknown_id(client: TestClient):
